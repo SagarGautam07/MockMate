@@ -42,3 +42,5 @@ Thumbs.db
 *.bak
 coverage/
 
+# --- Sensitive Information ---
+*.env
