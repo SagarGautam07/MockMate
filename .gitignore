@@ -1,0 +1,44 @@
+# MockMate Project (.gitignore)
+# Framework: React + Vite + Tailwind CSS
+# Author: Sagar Kumar Gautam
+
+# --- Dependencies ---
+node_modules/
+
+# --- Build Outputs ---
+dist/
+build/
+.vite/
+
+# --- Environment Files ---
+.env
+.env.local
+.env.*.local
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- System Files ---
+.DS_Store
+Thumbs.db
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Cache ---
+.cache/
+.parcel-cache/
+
+# --- Misc ---
+*.tmp
+*.bak
+coverage/
+
