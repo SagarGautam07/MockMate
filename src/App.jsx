@@ -8,6 +8,7 @@ import { VolunteerInterview } from "./components/VolunteerInterview";
 import { JobPortal } from "./components/JobPortal";
 import { UserDashboard } from "./components/UserDashboard";
 import { CoinStore } from "./components/CoinStore";
+import { useAuth } from "./contexts/AuthContext";
 import {
   Briefcase,
   Bot,
@@ -15,6 +16,7 @@ import {
   Home as HomeIcon,
   User,
   Store,
+  LogOut,
 } from "lucide-react";
 
 export default function App() {
@@ -22,6 +24,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
   const [userCoins, setUserCoins] = useState(150);
   const [interviewHistory, setInterviewHistory] = useState([]);
+  const { user, logOut } = useAuth();
 
   // Add completed interview to history
   const addInterviewToHistory = (interview) => {
@@ -183,6 +186,20 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-3">
+                {user && (
+                  <div className="hidden md:flex items-center gap-2 px-3 py-2 glass-card rounded-lg border border-cyan-500/30">
+                    <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-full flex items-center justify-center">
+                      <span className="text-white text-xs font-semibold">
+                        {user.displayName ? user.displayName.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="hidden lg:block">
+                      <p className="text-xs text-white/90 font-medium">
+                        {user.displayName || user.email?.split('@')[0]}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={() => setCurrentPage("store")}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-full transition-all hover:scale-105 cursor-pointer cyber-glow neon-border"
@@ -193,6 +210,15 @@ export default function App() {
                   </span>
                   <Store className="w-4 h-4 text-white" />
                 </button>
+                {user && (
+                  <button
+                    onClick={logOut}
+                    className="px-3 py-2 text-white/70 hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-all"
+                    title="Logout"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>

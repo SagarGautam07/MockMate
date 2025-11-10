@@ -4,8 +4,27 @@
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Bot, Briefcase, Zap, Award, TrendingUp, ArrowRight, Users } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 export function Home({ onNavigate }) {
+  const { user, signInWithGoogle } = useAuth();
+
+  // Handle button click - if not logged in, show Google auth, otherwise navigate
+  const handleButtonClick = async (page) => {
+    if (!user) {
+      try {
+        await signInWithGoogle();
+        // After successful login, navigate to the requested page
+        onNavigate(page);
+      } catch (error) {
+        console.error('Failed to sign in:', error);
+        // You can add a toast notification here if needed
+      }
+    } else {
+      // User is already logged in, navigate directly
+      onNavigate(page);
+    }
+  };
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 relative overflow-hidden">
       {/* Background visual effects for cyberpunk aesthetic */}
@@ -34,7 +53,7 @@ export function Home({ onNavigate }) {
           <div className="flex flex-wrap gap-4 justify-center">
             <Button 
               size="lg" 
-              onClick={() => onNavigate('ai-interview')}
+              onClick={() => handleButtonClick('ai-interview')}
               className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 cyber-glow border-0 text-white"
             >
               <Bot className="w-5 h-5 mr-2" />
@@ -42,18 +61,27 @@ export function Home({ onNavigate }) {
             </Button>
             <Button 
               size="lg" 
-              onClick={() => onNavigate('volunteer-interview')}
+              onClick={() => handleButtonClick('volunteer-interview')}
               className="glass-card border-cyan-500/50 text-white hover:bg-white/20"
             >
               <Users className="w-5 h-5 mr-2" />
               Book Mock Interview
             </Button>
           </div>
+          
+          {/* Show user info if logged in */}
+          {user && (
+            <div className="mt-4 text-center">
+              <p className="text-white/60 text-sm">
+                Welcome, {user.displayName || user.email}!
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Feature cards showcasing platform capabilities */}
         <div className="grid md:grid-cols-3 gap-6 mb-16">
-          <Card className="p-6 glass-card neon-border hover:cyber-glow transition-all cursor-pointer group" onClick={() => onNavigate('ai-interview')}>
+          <Card className="p-6 glass-card neon-border hover:cyber-glow transition-all cursor-pointer group" onClick={() => handleButtonClick('ai-interview')}>
             <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <Bot className="w-6 h-6 text-white" />
             </div>
@@ -77,7 +105,7 @@ export function Home({ onNavigate }) {
             </ul>
           </Card>
 
-          <Card className="p-6 glass-card neon-border hover:cyber-glow transition-all cursor-pointer group" onClick={() => onNavigate('volunteer-interview')}>
+          <Card className="p-6 glass-card neon-border hover:cyber-glow transition-all cursor-pointer group" onClick={() => handleButtonClick('volunteer-interview')}>
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <Users className="w-6 h-6 text-white" />
             </div>
@@ -101,7 +129,7 @@ export function Home({ onNavigate }) {
             </ul>
           </Card>
 
-          <Card className="p-6 glass-card neon-border hover:cyber-glow transition-all cursor-pointer group" onClick={() => onNavigate('jobs')}>
+          <Card className="p-6 glass-card neon-border hover:cyber-glow transition-all cursor-pointer group" onClick={() => handleButtonClick('jobs')}>
             <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
               <Briefcase className="w-6 h-6 text-white" />
             </div>
@@ -207,7 +235,7 @@ export function Home({ onNavigate }) {
           </p>
           <Button 
             size="lg" 
-            onClick={() => onNavigate('dashboard')}
+            onClick={() => handleButtonClick('dashboard')}
             className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 border-0 text-white"
           >
             Get Started Now
