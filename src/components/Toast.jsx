@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
+import { toDisplayMessage } from '../utils/errorMessage';
 
 const ToastContext = createContext(null);
 
@@ -30,8 +31,9 @@ export function ToastProvider({ children }) {
   const addToast = useCallback(
     (type, message) => {
       const id = ++counter.current;
+      const safeMessage = toDisplayMessage(message);
       setToasts((prev) => {
-        const next = [...prev, { id, type, message }];
+        const next = [...prev, { id, type, message: safeMessage }];
         return next.slice(-4); // max 4 visible
       });
       setTimeout(() => dismiss(id), DURATIONS[type] || 4000);
@@ -85,4 +87,3 @@ export const useToast = () => {
   if (!ctx) throw new Error('useToast must be used inside ToastProvider');
   return ctx;
 };
-

@@ -8,6 +8,7 @@ import { Bot, Briefcase, Zap, Award, ArrowRight, Users, Loader2 } from 'lucide-r
 import { useAuth } from '../contexts/AuthContext';
 import { statsAPI } from '../services/api';
 import { useToast } from './Toast';
+import { toDisplayMessage } from '../utils/errorMessage';
 
 export function Home({ onNavigate }) {
   const { user, signInWithGoogle } = useAuth();
@@ -19,7 +20,12 @@ export function Home({ onNavigate }) {
 
   function getUserFriendlyMessage(err) {
     if (err?.code === 'auth/popup-closed-by-user') return null;
+    const serverMessage = toDisplayMessage(
+      err?.response?.data?.error ?? err?.response?.data?.message ?? err?.response?.data?.details,
+      '',
+    );
     const msg = String(err?.message || '');
+    if (serverMessage) return serverMessage;
     if (msg.toLowerCase().includes('network')) return 'Network error. Check your connection.';
     if (err?.response?.status === 401) return 'Session expired. Please sign in again.';
     if (err?.response?.status === 429) return 'Too many requests. Please wait a moment.';

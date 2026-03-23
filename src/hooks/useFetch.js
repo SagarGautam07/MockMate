@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getApiErrorMessage } from '../utils/errorMessage';
 
 export function useFetch(fetchFn, deps = []) {
   const [data, setData] = useState(null);
@@ -12,7 +13,7 @@ export function useFetch(fetchFn, deps = []) {
       const result = await fetchFn();
       setData(result);
     } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Something went wrong.');
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -34,4 +35,3 @@ export function useDebounce(value, delay = 400) {
   }, [value, delay]);
   return debounced;
 }
-

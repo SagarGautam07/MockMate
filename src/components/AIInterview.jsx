@@ -25,6 +25,7 @@ import { useToast } from './Toast';
 import { useVoice } from '../hooks/useVoice';
 import VoiceControls from './VoiceControls';
 import CameraPreview from './CameraPreview';
+import { toDisplayMessage } from '../utils/errorMessage';
 
 const INTERVIEW_TYPES = [
   { value: 'Technical', label: 'Technical Interview', icon: '💻' },
@@ -85,9 +86,12 @@ export function AIInterview({ onNavigate, onCoinsEarned }) {
 
   function getUserFriendlyMessage(err) {
     if (err?.code === 'auth/popup-closed-by-user') return null;
-    const serverMessage =
-      err?.response?.data?.error ||
-      (Array.isArray(err?.response?.data?.details) ? err.response.data.details.join(', ') : '');
+    const serverMessage = toDisplayMessage(
+      err?.response?.data?.error ??
+        err?.response?.data?.message ??
+        err?.response?.data?.details,
+      '',
+    );
     const msg = String(err?.message || '');
     if (serverMessage) return serverMessage;
     if (msg.toLowerCase().includes('network')) return 'Network error. Check your connection.';

@@ -25,6 +25,7 @@ import {
 import { userAPI, interviewAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from './Toast';
+import { toDisplayMessage } from '../utils/errorMessage';
 
 export function UserDashboard({ onNavigate, userCoins }) {
   const { user } = useAuth();
@@ -46,7 +47,12 @@ export function UserDashboard({ onNavigate, userCoins }) {
 
   function getUserFriendlyMessage(err) {
     if (err?.code === 'auth/popup-closed-by-user') return null;
+    const serverMessage = toDisplayMessage(
+      err?.response?.data?.error ?? err?.response?.data?.message ?? err?.response?.data?.details,
+      '',
+    );
     const msg = String(err?.message || '');
+    if (serverMessage) return serverMessage;
     if (msg.toLowerCase().includes('network')) return 'Network error. Check your connection.';
     if (err?.response?.status === 401) return 'Session expired. Please sign in again.';
     if (err?.response?.status === 429) return 'Too many requests. Please wait a moment.';
