@@ -9,6 +9,7 @@ import { CoinStore } from './components/CoinStore';
 import { AdminPanel } from './components/AdminPanel';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
+import API_URL from './config';
 import { useAuth } from './contexts/AuthContext';
 import { userAPI } from './services/api';
 
@@ -108,7 +109,7 @@ export default function App() {
   useEffect(() => {
     if (import.meta.env.VITE_MOCK_MODE === 'true') return;
 
-    fetch('/api/health')
+    fetch(`${API_URL}/api/health`)
       .then((res) => res.json())
       .then(() => {
         console.log('✅ Backend connected');

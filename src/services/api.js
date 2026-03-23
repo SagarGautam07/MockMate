@@ -1,9 +1,11 @@
 import axios from 'axios';
 
+import API_URL from '../config';
+
 // With Vite proxy configured, we do NOT need a full base URL.
 // Requests to /api/* are automatically forwarded to the backend by Vite.
 // IS_MOCK is only true if explicitly set — default is now LIVE mode when backend is running.
-const BASE_URL = import.meta.env.VITE_API_URL || '';
+const BASE_URL = import.meta.env.VITE_API_URL || API_URL;
 // IS_MOCK is true ONLY when explicitly set.
 // Without backend running, set VITE_MOCK_MODE=true in .env to use mock data.
 // Default is false so the real backend is used when available.
