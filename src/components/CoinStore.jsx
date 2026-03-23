@@ -1,12 +1,14 @@
 // Coin Store component - allows users to purchase premium features and courses using coins
 // Displays available items, handles purchases, and shows coin balance
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { ArrowLeft, Sparkles, Zap, Star, TrendingUp, Crown, Rocket } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from './Toast';
+import { coinsAPI } from '../services/api';
 
 // Available items in the coin store
 const STORE_ITEMS = [
@@ -84,22 +86,64 @@ const STORE_ITEMS = [
   },
 ];
 
-export function CoinStore({ onNavigate, userCoins, onPurchase }) {
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [purchaseSuccess, setPurchaseSuccess] = useState(false);
+export function CoinStore({ onNavigate, userCoins: initialUserCoins, onPurchase }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [userCoins, setUserCoins] = useState(initialUserCoins ?? 0);
+  const [purchasing, setPurchasing] = useState(null);
+  const [confirmItem, setConfirmItem] = useState(null);
+  const [purchased, setPurchased] = useState(new Set());
+  const [transactions, setTransactions] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Handle item purchase and deduct coins
-  const handlePurchase = (item) => {
-    if (userCoins >= item.price) {
-      onPurchase(item.price);
-      setPurchaseSuccess(true);
-      // Close success message after 2 seconds
-      setTimeout(() => {
-        setPurchaseSuccess(false);
-        setSelectedItem(null);
-      }, 2000);
+  useEffect(() => {
+    setUserCoins(initialUserCoins ?? 0);
+  }, [initialUserCoins]);
+
+  const loadHistory = async () => {
+    if (!user) {
+      setTransactions([]);
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const data = await coinsAPI.getHistory();
+      setTransactions(data?.transactions || []);
+    } catch (_) {
+      setTransactions([]);
+    } finally {
+      setHistoryLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadHistory();
+  }, [user]);
+
+  async function handlePurchase(item) {
+    if (!user) { toast.error('Please sign in to purchase'); return; }
+    if (userCoins < item.price) {
+      toast.error(`Insufficient coins. You need ${item.price} but have ${userCoins}.`);
+      return;
+    }
+    if (purchasing) return;
+
+    setPurchasing(item.id);
+    try {
+      await coinsAPI.purchase({ itemId: item.id, cost: item.price });
+      setUserCoins((prev) => prev - item.price);
+      setPurchased((prev) => new Set([...prev, item.id]));
+      setConfirmItem(null);
+      onPurchase?.(item.price);
+      toast.success(`${item.title} unlocked! ${item.price} coins deducted.`);
+      loadHistory();
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Purchase failed';
+      toast.error(msg);
+    } finally {
+      setPurchasing(null);
+    }
+  }
 
   // Get gradient color classes based on item type
   const getTypeColor = (type) => {
@@ -159,8 +203,7 @@ export function CoinStore({ onNavigate, userCoins, onPurchase }) {
             return (
               <Card
                 key={item.id}
-                className="p-6 glass-card hover:cyber-glow transition-all cursor-pointer group relative overflow-hidden border-white/20"
-                onClick={() => setSelectedItem(item)}
+                className="p-6 glass-card hover:cyber-glow transition-all group relative overflow-hidden border-white/20"
               >
                 <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${getTypeColor(item.type)} opacity-20 blur-3xl group-hover:opacity-30 transition-opacity`} />
                 
@@ -192,13 +235,22 @@ export function CoinStore({ onNavigate, userCoins, onPurchase }) {
                       <span className="text-2xl">🪙</span>
                       <span className="text-2xl text-white font-semibold">{item.price}</span>
                     </div>
-                    <Button
-                      size="sm"
-                      className={`bg-gradient-to-r ${getTypeColor(item.type)} hover:opacity-90 text-white border-0`}
-                      disabled={userCoins < item.price}
+                    <button
+                      type="button"
+                      onClick={() => (purchased.has(item.id) ? null : setConfirmItem(item))}
+                      disabled={purchased.has(item.id)}
+                      className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
+                        purchased.has(item.id)
+                          ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 cursor-default'
+                          : userCoins < item.price
+                            ? 'bg-white/10 border border-white/20 text-white/40 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white'
+                      }`}
                     >
-                      {userCoins < item.price ? 'Not Enough Coins' : 'Get Now'}
-                    </Button>
+                      {purchased.has(item.id) ? '✓ Unlocked'
+                        : userCoins < item.price ? `Need ${item.price - userCoins} more coins`
+                        : `Get Now (${item.price} coins)`}
+                    </button>
                   </div>
                 </div>
               </Card>
@@ -206,87 +258,66 @@ export function CoinStore({ onNavigate, userCoins, onPurchase }) {
           })}
         </div>
 
+        <Card className="mt-8 p-6 glass-card border-white/20">
+          <h2 className="text-white text-xl mb-4">Purchase History</h2>
+          {historyLoading ? (
+            <p className="text-white/60 text-sm">Loading purchases...</p>
+          ) : transactions.length === 0 ? (
+            <p className="text-white/60 text-sm">No purchases yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {transactions.slice(0, 8).map((tx) => (
+                <div
+                  key={tx._id || `${tx.createdAt}-${tx.reason}`}
+                  className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10"
+                >
+                  <div>
+                    <p className="text-white text-sm">{tx.reason || 'Purchase'}</p>
+                    <p className="text-white/40 text-xs">
+                      {tx.createdAt ? new Date(tx.createdAt).toLocaleString() : 'Unknown date'}
+                    </p>
+                  </div>
+                  <span className={`text-sm font-semibold ${tx.type === 'spend' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {tx.type === 'spend' ? '-' : '+'}
+                    {tx.amount || 0} coins
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
         {/* Purchase confirmation modal */}
-        <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
-          <DialogContent className="glass-card border-white/20 text-white">
-            {selectedItem && !purchaseSuccess && (
-              <>
-                <DialogHeader>
-                  <DialogTitle className="text-white">{selectedItem.title}</DialogTitle>
-                </DialogHeader>
-
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <div className="text-6xl mb-4">{selectedItem.icon}</div>
-                    <p className="text-white/70">{selectedItem.description}</p>
-                  </div>
-
-                  <div className="bg-white/5 p-4 rounded-lg">
-                    <h4 className="mb-3 text-white">What's included:</h4>
-                    <ul className="space-y-2">
-                      {selectedItem.features.map((feature, index) => (
-                        <li key={index} className="flex items-center gap-2 text-white/80">
-                          <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-500/20 to-orange-500/20 rounded-lg">
-                    <div>
-                      <div className="text-sm text-white/70">Price</div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-3xl">🪙</span>
-                        <span className="text-2xl text-white font-semibold">{selectedItem.price}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-white/70">Your Balance</div>
-                      <div className="text-2xl text-white font-semibold">{userCoins}</div>
-                    </div>
-                  </div>
-
-                  {userCoins < selectedItem.price ? (
-                    <div className="bg-red-500/20 border border-red-500/50 p-4 rounded-lg text-center">
-                      <p className="text-white">
-                        You need {selectedItem.price - userCoins} more coins to purchase this item
-                      </p>
-                      <Button
-                        onClick={() => onNavigate('ai-interview')}
-                        variant="outline"
-                        className="mt-3 border-white/20 text-white hover:bg-white/10"
-                      >
-                        Complete AI Interview to Earn Coins
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      onClick={() => handlePurchase(selectedItem)}
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0"
-                      size="lg"
-                    >
-                      <Sparkles className="w-5 h-5 mr-2" />
-                      Purchase Now
-                    </Button>
-                  )}
-                </div>
-              </>
-            )}
-
-            {purchaseSuccess && (
-              <div className="text-center py-8">
-                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse-slow">
-                  <Star className="w-10 h-10 text-green-400 fill-green-400" />
-                </div>
-                <h3 className="mb-2 text-white">Purchase Successful! 🎉</h3>
-                <p className="text-white/70">
-                  Your item has been activated and is ready to use
-                </p>
+        {confirmItem && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={(e) => e.target === e.currentTarget && setConfirmItem(null)}
+          >
+            <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-sm">
+              <h3 className="text-white font-bold text-lg mb-2">Confirm Purchase</h3>
+              <p className="text-white/60 text-sm mb-1">You are about to purchase:</p>
+              <p className="text-cyan-400 font-semibold mb-4">{confirmItem.title}</p>
+              <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3 mb-5">
+                <span className="text-white/70 text-sm">Cost</span>
+                <span className="text-cyan-400 font-bold">{confirmItem.price} coins</span>
               </div>
-            )}
-          </DialogContent>
-        </Dialog>
+              <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3 mb-5">
+                <span className="text-white/70 text-sm">Your balance after</span>
+                <span className={`font-bold ${userCoins - confirmItem.price < 0 ? 'text-red-400' : 'text-white'}`}>
+                  {userCoins - confirmItem.price} coins
+                </span>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setConfirmItem(null)} className="flex-1 border border-white/20 text-white/70 hover:text-white hover:bg-white/5 font-medium py-2.5 rounded-xl text-sm transition-all">
+                  Cancel
+                </button>
+                <button type="button" onClick={() => handlePurchase(confirmItem)} disabled={!!purchasing} className="flex-1 bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/30 text-white font-semibold py-2.5 rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+                  {purchasing ? 'Processing...' : `Confirm (${confirmItem.price} coins)`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Information section on how to earn more coins */}
         <Card className="mt-12 p-8 glass-card border-white/20 text-center">

@@ -8,6 +8,7 @@ import {
   onAuthStateChanged 
 } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase/config';
+import { setTokenGetter } from '../services/api';
 
 const AuthContext = createContext({});
 
@@ -28,13 +29,8 @@ export const AuthProvider = ({ children }) => {
     if (!auth || !googleProvider) {
       throw new Error('Firebase is not configured. Please set up your .env file with Firebase credentials.');
     }
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      return result.user;
-    } catch (error) {
-      console.error('Error signing in with Google:', error);
-      throw error;
-    }
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
   };
 
   // Sign out
@@ -42,12 +38,7 @@ export const AuthProvider = ({ children }) => {
     if (!auth) {
       throw new Error('Firebase is not configured. Please set up your .env file with Firebase credentials.');
     }
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error('Error signing out:', error);
-      throw error;
-    }
+    await signOut(auth);
   };
 
   // Listen for auth state changes
@@ -59,6 +50,11 @@ export const AuthProvider = ({ children }) => {
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        setTokenGetter(() => currentUser.getIdToken());
+      } else {
+        setTokenGetter(null);
+      }
       setLoading(false);
     });
 

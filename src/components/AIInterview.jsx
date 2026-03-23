@@ -1,130 +1,249 @@
-// AI Interview component - handles text-based interview practice sessions
-// Manages interview setup, question flow, answer submission, and feedback generation
-
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
-import { Bot, Send, ArrowLeft, Sparkles, CheckCircle } from 'lucide-react';
+import { Input } from './ui/input';
+import {
+  Bot,
+  Send,
+  ArrowLeft,
+  Sparkles,
+  CheckCircle,
+  Loader2,
+  AlertCircle,
+  Mic,
+  Type,
+  Video,
+  VideoOff,
+} from 'lucide-react';
+import { interviewAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from './Toast';
+import { useVoice } from '../hooks/useVoice';
+import VoiceControls from './VoiceControls';
+import CameraPreview from './CameraPreview';
 
-// Available interview types for users to choose from
 const INTERVIEW_TYPES = [
-  { value: 'technical', label: 'Technical Interview', icon: '💻' },
-  { value: 'behavioral', label: 'Behavioral Interview', icon: '🎯' },
-  { value: 'system-design', label: 'System Design', icon: '🏗️' },
-  { value: 'hr', label: 'HR Round', icon: '👔' },
+  { value: 'Technical', label: 'Technical Interview', icon: '💻' },
+  { value: 'Behavioral', label: 'Behavioral Interview', icon: '🎯' },
+  { value: 'System Design', label: 'System Design', icon: '🏗️' },
+  { value: 'HR', label: 'HR Round', icon: '👔' },
 ];
 
-// Difficulty levels for interview customization
 const DIFFICULTY_LEVELS = [
-  { value: 'beginner', label: 'Beginner' },
-  { value: 'intermediate', label: 'Intermediate' },
-  { value: 'advanced', label: 'Advanced' },
+  { value: 'Beginner', label: 'Beginner' },
+  { value: 'Intermediate', label: 'Intermediate' },
+  { value: 'Advanced', label: 'Advanced' },
 ];
 
-// Sample questions organized by interview type
-const SAMPLE_QUESTIONS = {
-  technical: [
-    "Can you explain the difference between synchronous and asynchronous programming?",
-    "How would you optimize a slow database query?",
-    "What are the main differences between REST and GraphQL?",
-  ],
-  behavioral: [
-    "Tell me about a time when you had to work with a difficult team member.",
-    "Describe a situation where you had to meet a tight deadline.",
-    "How do you handle constructive criticism?",
-  ],
-  'system-design': [
-    "How would you design a URL shortening service like bit.ly?",
-    "Design a rate limiter for an API.",
-    "How would you architect a notification system?",
-  ],
-  hr: [
-    "Why do you want to work for our company?",
-    "Where do you see yourself in 5 years?",
-    "What are your salary expectations?",
-  ],
-};
+export function AIInterview({ onNavigate, onCoinsEarned }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
 
-export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
-  // Interview session state management
-  const [stage, setStage] = useState('setup'); // 'setup', 'interview', or 'feedback'
-  const [interviewType, setInterviewType] = useState('');
+  const [stage, setStage] = useState('setup'); // 'setup' | 'interview' | 'feedback'
+  const [type, setType] = useState('');
   const [difficulty, setDifficulty] = useState('');
+  const [role, setRole] = useState('Software Engineer');
+
+  const [sessionId, setSessionId] = useState(null);
+  const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [answers, setAnswers] = useState([]);
 
-  // Get questions based on selected interview type
-  const questions = interviewType ? SAMPLE_QUESTIONS[interviewType] : [];
+  const [starting, setStarting] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
+  const [errorBanner, setErrorBanner] = useState(null);
+  const [lastAction, setLastAction] = useState(null);
+  const [finalResult, setFinalResult] = useState(null);
+
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const [answerMode, setAnswerMode] = useState('text'); // 'text' | 'voice'
+
+  const {
+    speak,
+    stopSpeaking,
+    isSpeaking,
+    startListening,
+    stopListening,
+    isListening,
+    transcript,
+    resetTranscript,
+    sttSupported,
+    ttsSupported,
+    sttError,
+  } = useVoice();
+
   const currentQuestion = questions[currentQuestionIndex];
   const progress = questions.length ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0;
 
-  // Start the interview session after configuration
-  const startInterview = () => {
-    if (interviewType && difficulty) {
-      setStage('interview');
+  function getUserFriendlyMessage(err) {
+    if (err?.code === 'auth/popup-closed-by-user') return null;
+    const serverMessage =
+      err?.response?.data?.error ||
+      (Array.isArray(err?.response?.data?.details) ? err.response.data.details.join(', ') : '');
+    const msg = String(err?.message || '');
+    if (serverMessage) return serverMessage;
+    if (msg.toLowerCase().includes('network')) return 'Network error. Check your connection.';
+    if (msg.toLowerCase().includes('timeout')) {
+      return 'The AI interviewer is taking longer than expected. Please retry in a moment.';
     }
-  };
+    if (err?.response?.status === 401) return 'Session expired. Please sign in again.';
+    if (err?.response?.status === 429) return 'Too many requests. Please wait a moment.';
+    return 'Something went wrong. Please try again.';
+  }
 
-  // Generate AI-powered feedback for user answers
-  // In a real implementation, this would call an AI API
-  const generateAIFeedback = (question, answer) => {
-    const score = Math.floor(Math.random() * 30) + 70;
-    return {
-      score,
-      strengths: [
-        'Clear communication',
-        'Good structure in your response',
-        'Relevant examples provided',
-      ],
-      improvements: [
-        'Could add more specific metrics',
-        'Consider mentioning edge cases',
-        'Add more technical depth',
-      ],
-      suggestions: 'Try to use the STAR method (Situation, Task, Action, Result) for more structured responses.',
+  const retry = useMemo(() => {
+    return async () => {
+      if (!lastAction) return;
+      if (lastAction.type === 'start') return startInterview();
+      if (lastAction.type === 'answer') return submitAnswer(lastAction.payload?.answerOverride);
+      if (lastAction.type === 'complete') return completeInterview();
     };
-  };
+  }, [lastAction]);
 
-  // Handle answer submission and move to next question or finish interview
-  const submitAnswer = () => {
-    if (!userAnswer.trim()) return;
+  async function startInterview() {
+    if (!type || !difficulty || !role.trim()) return;
 
-    const feedback = generateAIFeedback(currentQuestion, userAnswer);
-    const newAnswers = [...answers, { question: currentQuestion, answer: userAnswer, feedback }];
-    setAnswers(newAnswers);
+    setLastAction({ type: 'start' });
+    setErrorBanner(null);
+    setStarting(true);
+    setSessionId(null);
+    try {
+      const data = await interviewAPI.start({ type, difficulty, role });
+      if (!data?.sessionId) throw new Error('Server did not return a session ID');
+      if (!data?.questions?.length) throw new Error('Server did not return questions');
 
-    if (currentQuestionIndex < questions.length - 1) {
-      // Move to next question
-      setCurrentQuestionIndex((prev) => prev + 1);
+      setSessionId(data.sessionId);
+      console.log('[AIInterview] sessionId:', data.sessionId);
+      setQuestions(data.questions || []);
+      setAnswers([]);
+      setCurrentQuestionIndex(0);
       setUserAnswer('');
-    } else {
-      // Interview complete - calculate average score and save to history
-      const avgScore = newAnswers.reduce((acc, curr) => acc + curr.feedback.score, 0) / newAnswers.length;
-      onComplete({
-        type: 'AI Interview',
-        interviewType,
-        difficulty,
-        date: new Date().toISOString(),
-        score: avgScore,
-        questionsCount: questions.length,
-      });
-      onCoinsEarned(5); // Award coins for completing interview
-      setStage('feedback');
+      setFinalResult(null);
+      setStage('interview');
+      toast.success('Interview started. Good luck!');
+    } catch (err) {
+      console.error('[AIInterview]', err);
+      const msg = getUserFriendlyMessage(err);
+      if (msg) toast.error(msg);
+      setErrorBanner(msg || 'Something went wrong. Please try again.');
+    } finally {
+      setStarting(false);
     }
-  };
+  }
 
-  // Skip current question and move to next
+  async function submitAnswer(answerOverride = null) {
+    const answerToSend = (answerOverride ?? userAnswer).trim();
+    if (!answerToSend) {
+      toast.error('Please write or speak your answer first');
+      return;
+    }
+    if (!sessionId) {
+      toast.error('Session error — please restart the interview');
+      return;
+    }
+
+    setLastAction({ type: 'answer', payload: { answerOverride: answerToSend } });
+    setErrorBanner(null);
+    setEvaluating(true);
+    try {
+      const feedback = await interviewAPI.submitAnswer(sessionId, {
+        questionIndex: currentQuestionIndex,
+        answer: answerToSend,
+        answerMode,
+      });
+
+      const nextAnswers = [
+        ...answers,
+        { question: currentQuestion, answer: answerToSend, feedback },
+      ];
+      setAnswers(nextAnswers);
+      toast.success(`Answer ${currentQuestionIndex + 1} evaluated`);
+
+      if (currentQuestionIndex < questions.length - 1) {
+        stopSpeaking();
+        stopListening();
+        resetTranscript();
+        setAnswerMode('text');
+        setCurrentQuestionIndex((p) => p + 1);
+        setUserAnswer('');
+      } else {
+        await completeInterview();
+      }
+    } catch (err) {
+      console.error('[AIInterview]', err);
+      const msg = getUserFriendlyMessage(err);
+      if (msg) toast.error(msg);
+      setErrorBanner(msg || 'Something went wrong. Please try again.');
+    } finally {
+      setEvaluating(false);
+    }
+  }
+
+  async function completeInterview() {
+    if (!sessionId) return;
+    setLastAction({ type: 'complete' });
+    setErrorBanner(null);
+    setCompleting(true);
+    try {
+      stopSpeaking();
+      stopListening();
+      resetTranscript();
+      setAnswerMode('text');
+      setCameraEnabled(false);
+      const result = await interviewAPI.complete(sessionId, user);
+      setFinalResult(result);
+      if (result?.coinsEarned) {
+        onCoinsEarned?.(result.coinsEarned);
+        toast.success('+5 coins earned!');
+      }
+      toast.success('Interview completed successfully!');
+      setStage('feedback');
+    } catch (err) {
+      console.error('[AIInterview]', err);
+      const msg = getUserFriendlyMessage(err);
+      if (msg) toast.error(msg);
+      setErrorBanner(msg || 'Something went wrong. Please try again.');
+    } finally {
+      setCompleting(false);
+    }
+  }
+
   const skipQuestion = () => {
     if (currentQuestionIndex < questions.length - 1) {
+      stopSpeaking();
+      stopListening();
+      resetTranscript();
+      setAnswerMode('text');
       setCurrentQuestionIndex((prev) => prev + 1);
       setUserAnswer('');
     }
   };
+
+  // Auto-speak the question when it changes (only if TTS is available and we are in interview)
+  useEffect(() => {
+    if (stage === 'interview' && currentQuestion && ttsSupported) {
+      const timer = setTimeout(() => {
+        speak(currentQuestion);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [stage, currentQuestion, ttsSupported, speak]);
+
+  // Keep answer field in sync with voice transcript
+  useEffect(() => {
+    if (transcript && answerMode === 'voice') {
+      setUserAnswer(transcript);
+    }
+  }, [transcript, answerMode]);
 
   // Setup stage - user selects interview type and difficulty
   if (stage === 'setup') {
@@ -143,6 +262,24 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
           </Button>
 
           <Card className="p-8 glass-card neon-border cyber-glow scan-line">
+            {errorBanner && (
+              <div className="mb-6 glass-card neon-border border-red-500/40 bg-red-500/10 p-4 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-white/90 text-sm">{errorBanner}</p>
+                    <Button
+                      onClick={retry}
+                      variant="outline"
+                      className="mt-3 border-red-400/30 text-white hover:bg-white/10"
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col items-center mb-8">
               <div className="relative">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-500 to-purple-600 blur-2xl opacity-60 animate-pulse-slow"></div>
@@ -167,7 +304,7 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
             <div className="space-y-6">
               <div>
                 <label className="block mb-2">Interview Type</label>
-                <Select value={interviewType} onValueChange={setInterviewType}>
+                <Select value={type} onValueChange={setType}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select interview type" />
                   </SelectTrigger>
@@ -198,6 +335,16 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
                 </Select>
               </div>
 
+              <div>
+                <label className="block mb-2">Job Role / Position</label>
+                <Input
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="e.g. React Developer, Data Engineer"
+                  className="bg-white/5 border-cyan-500/30 text-white placeholder:text-white/40 focus:border-cyan-500"
+                />
+              </div>
+
               <div className="glass-card p-4 rounded-lg neon-border-cyan">
                 <div className="flex items-start gap-3">
                   <Sparkles className="w-5 h-5 text-cyan-400 mt-0.5 animate-pulse-slow" />
@@ -214,12 +361,44 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
               </div>
 
 
+              {/* Camera toggle — shown on setup screen */}
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                    <Video className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div>
+                    <p className="text-white text-sm font-medium">Camera Monitor</p>
+                    <p className="text-white/50 text-xs">See yourself during the interview</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCameraEnabled(prev => !prev)}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                    cameraEnabled ? 'bg-cyan-500' : 'bg-white/20'
+                  }`}
+                >
+                  <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow
+                    transition-transform ${cameraEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+
+              {cameraError && (
+                <div className="flex items-center gap-2 text-amber-400 text-xs">
+                  <VideoOff className="w-4 h-4 shrink-0" />
+                  <span>{cameraError}</span>
+                </div>
+              )}
+
               <Button
                 onClick={startInterview}
-                disabled={!interviewType || !difficulty}
+                disabled={!type || !difficulty || !role.trim() || starting}
                 className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 cyber-glow border-0 text-white"
                 size="lg"
               >
+                {starting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                 Start Interview
               </Button>
             </div>
@@ -236,12 +415,30 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
         <div className="absolute inset-0 grid-bg opacity-30"></div>
 
         <div className="max-w-3xl mx-auto relative z-10">
+          {errorBanner && (
+            <div className="mb-6 glass-card neon-border border-red-500/40 bg-red-500/10 p-4 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-white/90 text-sm">{errorBanner}</p>
+                  <Button
+                    onClick={retry}
+                    variant="outline"
+                    className="mt-3 border-red-400/30 text-white hover:bg-white/10"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-cyan-400">
                 Question {currentQuestionIndex + 1} of {questions.length}
               </span>
-              <Badge className="bg-gradient-to-r from-cyan-500 to-purple-600 text-white border-0">{interviewType}</Badge>
+              <Badge className="bg-gradient-to-r from-cyan-500 to-purple-600 text-white border-0">{type}</Badge>
             </div>
             <Progress value={progress} className="h-2 bg-white/10" />
           </div>
@@ -288,28 +485,116 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
                   <label className="text-cyan-400">Your Answer</label>
                 </div>
 
-                <div className="relative">
-                  <Textarea
-                    value={userAnswer}
-                    onChange={(e) => setUserAnswer(e.target.value)}
-                    placeholder="Type your answer here..."
-                    className="min-h-[200px] bg-white/5 border-cyan-500/30 text-white placeholder:text-white/40 focus:border-cyan-500"
-                  />
+                {/* Answer mode toggle — Text vs Voice */}
+                <div className="flex items-center gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAnswerMode('text');
+                      stopListening();
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      answerMode === 'text'
+                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                        : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+                    }`}
+                  >
+                    <Type className="w-3.5 h-3.5" />
+                    Type
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAnswerMode('voice');
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      answerMode === 'voice'
+                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                        : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+                    }`}
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                    Voice
+                    {!sttSupported && (
+                      <span className="text-amber-400 text-xs">(Chrome only)</span>
+                    )}
+                  </button>
                 </div>
 
+                {/* Text answer box — shown in text mode */}
+                {answerMode === 'text' && (
+                  <div className="relative">
+                    <Textarea
+                      value={userAnswer}
+                      onChange={(e) => setUserAnswer(e.target.value)}
+                      placeholder="Type your answer here..."
+                      className="min-h-[200px] bg-white/5 border-cyan-500/30 text-white placeholder:text-white/40 focus:border-cyan-500"
+                    />
+                  </div>
+                )}
+
+                {/* Voice answer — shown in voice mode */}
+                {answerMode === 'voice' && (
+                  <div className="space-y-3">
+                    <VoiceControls
+                      isListening={isListening}
+                      isSpeaking={isSpeaking}
+                      transcript={transcript}
+                      sttSupported={sttSupported}
+                      ttsSupported={ttsSupported}
+                      sttError={sttError}
+                      onStartListening={startListening}
+                      onStopListening={stopListening}
+                      onStopSpeaking={stopSpeaking}
+                    />
+
+                    {/* Show transcript as the answer — editable after recording stops */}
+                    {transcript && !isListening && (
+                      <div className="space-y-2">
+                        <p className="text-white/40 text-xs font-mono uppercase tracking-wide">
+                          Your answer (edit if needed before submitting)
+                        </p>
+                        <Textarea
+                          value={userAnswer}
+                          onChange={(e) => setUserAnswer(e.target.value)}
+                          rows={5}
+                          className="w-full bg-white/5 border border-cyan-500/30 rounded-xl p-4 text-white resize-none focus:outline-none focus:border-cyan-500/60 transition-colors text-sm leading-relaxed"
+                        />
+                      </div>
+                    )}
+
+                    {/* Prompt to start recording if no transcript yet */}
+                    {!transcript && !isListening && (
+                      <p className="text-center text-white/30 text-sm py-4">
+                        Click the microphone button above to start speaking your answer
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {evaluating && (
+                  <p className="mt-3 text-sm text-cyan-300 animate-pulse">
+                    🤖 AI is analysing your answer...
+                  </p>
+                )}
+
                 <p className="text-xs text-white/60 mt-2">
-                  💡 Tip: Type your answer. Be specific and explain your thought process
+                  💡 Tip: Be specific and explain your thought process
                 </p>
               </div>
 
               <div className="flex gap-3">
                 <Button
-                  onClick={submitAnswer}
-                  disabled={!userAnswer.trim()}
+                  onClick={() => submitAnswer()}
+                  disabled={!userAnswer.trim() || evaluating || completing}
                   className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 cyber-glow border-0 text-white"
                   size="lg"
                 >
-                  <Send className="w-4 h-4 mr-2" />
+                  {evaluating || completing ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4 mr-2" />
+                  )}
                   Submit Answer
                 </Button>
                 <Button
@@ -331,15 +616,19 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
               <div className="glass-card p-4 rounded-lg neon-border-cyan">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-cyan-400">Score</span>
-                  <Badge className={`${answers[answers.length - 1].feedback.score >= 80 ? 'bg-green-500' : 'bg-amber-500'} text-white border-0`}>
-                    {answers[answers.length - 1].feedback.score}/100
+                  <Badge
+                    className={`${
+                      (answers[answers.length - 1].feedback?.score ?? 0) >= 80 ? 'bg-green-500' : 'bg-amber-500'
+                    } text-white border-0`}
+                  >
+                    {answers[answers.length - 1].feedback?.score ?? 0}/100
                   </Badge>
                 </div>
                 <div className="text-sm space-y-2">
                   <div>
                     <span className="text-green-400">✓ Strengths:</span>
                     <ul className="ml-4 mt-1 space-y-1">
-                      {answers[answers.length - 1].feedback.strengths.map((s, i) => (
+                      {(answers[answers.length - 1].feedback?.strengths || []).map((s, i) => (
                         <li key={i} className="text-white/70">• {s}</li>
                       ))}
                     </ul>
@@ -349,12 +638,21 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
             </Card>
           )}
         </div>
+
+        {/* Camera preview — floating bottom-right, only during interview */}
+        <CameraPreview
+          active={stage === 'interview' && cameraEnabled}
+          onError={(msg) => {
+            setCameraError(msg);
+            setCameraEnabled(false);
+          }}
+        />
       </div>
     );
   }
 
   // Feedback stage - display results and performance summary
-  const avgScore = answers.length ? (answers.reduce((acc, curr) => acc + curr.feedback.score, 0) / answers.length) : 0;
+  const overallScore = finalResult?.overallScore ?? 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 py-12 px-4 particle-bg relative overflow-hidden">
@@ -370,7 +668,7 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
 
           <div className="inline-flex items-center gap-4 glass-card px-8 py-4 rounded-lg mb-4 neon-border-cyan">
             <div>
-              <div className="text-4xl mb-1 gradient-text-animate">{avgScore.toFixed(0)}</div>
+              <div className="text-4xl mb-1 gradient-text-animate">{overallScore}</div>
               <div className="text-sm text-white/70">Overall Score</div>
             </div>
           </div>
@@ -393,8 +691,8 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
                   {item.answer}
                 </div>
               </div>
-              <Badge className={`${item.feedback.score >= 80 ? 'bg-green-500' : 'bg-amber-500'} text-white border-0`}>
-                {item.feedback.score}/100
+              <Badge className={`${(item.feedback?.score ?? 0) >= 80 ? 'bg-green-500' : 'bg-amber-500'} text-white border-0`}>
+                {item.feedback?.score ?? 0}/100
               </Badge>
             </div>
 
@@ -402,7 +700,7 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
               <div>
                 <h4 className="text-green-400 mb-2">✓ Strengths</h4>
                 <ul className="space-y-1">
-                  {item.feedback.strengths.map((s, i) => (
+                  {(item.feedback?.strengths || []).map((s, i) => (
                     <li key={i} className="text-white/70">• {s}</li>
                   ))}
                 </ul>
@@ -410,7 +708,7 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
               <div>
                 <h4 className="text-amber-400 mb-2">⚠ Areas to Improve</h4>
                 <ul className="space-y-1">
-                  {item.feedback.improvements.map((s, i) => (
+                  {(item.feedback?.improvements || []).map((s, i) => (
                     <li key={i} className="text-white/70">• {s}</li>
                   ))}
                 </ul>
@@ -419,7 +717,7 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
 
             <div className="mt-4 p-3 glass-card rounded text-sm neon-border-cyan">
               <span className="text-cyan-400">💡 Suggestion: </span>
-              <span className="text-white/70">{item.feedback.suggestions}</span>
+              <span className="text-white/70">{item.feedback?.suggestion || ''}</span>
             </div>
           </Card>
         ))}
@@ -443,4 +741,3 @@ export function AIInterview({ onNavigate, onComplete, onCoinsEarned }) {
     </div>
   );
 }
-

@@ -1,17 +1,26 @@
-// Main entry point for MockMate application
-// Initializes React root and renders the App component
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import ErrorBoundary from './components/ErrorBoundary';
+import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './components/Toast';
+import App from './App';
+import './index.css';
 
-import { createRoot } from "react-dom/client";
-import App from "./App";
-import { AuthProvider } from "./contexts/AuthContext";
-import "./index.css";
-
-const rootElement = document.getElementById("root");
-if (rootElement) {
-  createRoot(rootElement).render(
+function AppWithAuth() {
+  return (
     <AuthProvider>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </AuthProvider>
   );
 }
+
+createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <ErrorBoundary>
+      <AppWithAuth />
+    </ErrorBoundary>
+  </React.StrictMode>
+);
 

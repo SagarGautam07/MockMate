@@ -3626,6 +3626,27 @@ html {
   font-size: var(--font-size);
 }
 
+::selection {
+  background: rgba(34, 211, 238, 0.28);
+  color: #f8fafc;
+}
+
+::-moz-selection {
+  background: rgba(34, 211, 238, 0.28);
+  color: #f8fafc;
+}
+
+select,
+select option,
+select optgroup {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+select:focus {
+  outline: none;
+}
+
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;

@@ -44,3 +44,12 @@ coverage/
 
 # --- Sensitive Information ---
 *.env
+
+# Backend
+server/.env
+server/node_modules/
+
+# Environment
+.env
+.env.local
+.env.production

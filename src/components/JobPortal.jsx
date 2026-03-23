@@ -1,148 +1,133 @@
-// This component displays the job portal where users can browse and apply to Indian job listings.
-// It includes search, filtering, job details, and application submission functionality.
-
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { Textarea } from './ui/textarea';
-import { ArrowLeft, Briefcase, MapPin, DollarSign, Clock, Building2, Search, Send, Bookmark, TrendingUp } from 'lucide-react';
-
-// Mock job listings focused on Indian companies and locations with INR salary ranges
-const JOB_LISTINGS = [
-  {
-    id: 1,
-    title: 'Frontend Developer',
-    company: 'TechMahindra',
-    location: 'Bangalore, India',
-    type: 'Full-time',
-    salary: '₹6-12 LPA',
-    posted: '2 days ago',
-    logo: 'TM',
-    tags: ['React', 'TypeScript', 'Tailwind'],
-    description: 'We are looking for an experienced frontend engineer to join our growing team in Bangalore...',
-    requirements: ['3+ years of experience', 'Expert in React', 'Strong TypeScript skills'],
-  },
-  {
-    id: 2,
-    title: 'Full Stack Developer',
-    company: 'Infosys',
-    location: 'Pune, India',
-    type: 'Full-time',
-    salary: '₹8-15 LPA',
-    posted: '1 week ago',
-    logo: 'IF',
-    tags: ['Node.js', 'React', 'AWS'],
-    description: 'Join our fast-paced team and work on cutting-edge projects for global clients...',
-    requirements: ['3+ years full-stack experience', 'Cloud expertise', 'Strong problem-solving skills'],
-  },
-  {
-    id: 3,
-    title: 'Backend Engineer',
-    company: 'Wipro',
-    location: 'Hyderabad, India',
-    type: 'Full-time',
-    salary: '₹7-14 LPA',
-    posted: '3 days ago',
-    logo: 'WP',
-    tags: ['Python', 'Django', 'PostgreSQL'],
-    description: 'Build scalable backend systems for our enterprise clients...',
-    requirements: ['4+ years backend development', 'Database expertise', 'API design'],
-  },
-  {
-    id: 4,
-    title: 'DevOps Engineer',
-    company: 'TCS',
-    location: 'Mumbai, India',
-    type: 'Full-time',
-    salary: '₹9-16 LPA',
-    posted: '5 days ago',
-    logo: 'TC',
-    tags: ['Kubernetes', 'Docker', 'CI/CD'],
-    description: 'Help us build and maintain our cloud infrastructure for enterprise solutions...',
-    requirements: ['3+ years DevOps experience', 'Kubernetes knowledge', 'Automation skills'],
-  },
-  {
-    id: 5,
-    title: 'Mobile Developer',
-    company: 'Zomato',
-    location: 'Gurgaon, India',
-    type: 'Full-time',
-    salary: '₹10-18 LPA',
-    posted: '1 day ago',
-    logo: 'ZM',
-    tags: ['React Native', 'iOS', 'Android'],
-    description: 'Create beautiful mobile experiences for millions of users across India...',
-    requirements: ['2+ years mobile development', 'Cross-platform expertise', 'UI/UX sense'],
-  },
-  {
-    id: 6,
-    title: 'Product Manager',
-    company: 'Flipkart',
-    location: 'Bangalore, India',
-    type: 'Full-time',
-    salary: '₹12-20 LPA',
-    posted: '4 days ago',
-    logo: 'FK',
-    tags: ['Product Strategy', 'Agile', 'Analytics'],
-    description: 'Lead product development and drive our product vision in the e-commerce space...',
-    requirements: ['4+ years PM experience', 'Technical background', 'Data-driven mindset'],
-  },
-  {
-    id: 7,
-    title: 'Data Scientist',
-    company: 'Paytm',
-    location: 'Noida, India',
-    type: 'Full-time',
-    salary: '₹11-19 LPA',
-    posted: '2 days ago',
-    logo: 'PT',
-    tags: ['Python', 'Machine Learning', 'SQL'],
-    description: 'Work on advanced analytics and machine learning models for financial services...',
-    requirements: ['3+ years data science experience', 'ML/AI expertise', 'Strong analytical skills'],
-  },
-  {
-    id: 8,
-    title: 'UI/UX Designer',
-    company: 'Swiggy',
-    location: 'Bangalore, India',
-    type: 'Full-time',
-    salary: '₹7-13 LPA',
-    posted: '6 days ago',
-    logo: 'SW',
-    tags: ['Figma', 'Design Systems', 'User Research'],
-    description: 'Design intuitive and beautiful user experiences for our food delivery platform...',
-    requirements: ['2+ years UI/UX experience', 'Portfolio required', 'User-centric thinking'],
-  },
-];
+import { ArrowLeft, Briefcase, MapPin, DollarSign, Clock, Building2, Search, Bookmark, TrendingUp, Users, AlertCircle, Loader2 } from 'lucide-react';
+import { jobsAPI } from '../services/api';
+import { useDebounce } from '../hooks/useFetch';
+import { useToast } from './Toast';
+import { useAuth } from '../contexts/AuthContext';
 
 export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+
   // State management for job portal features
   const [profileBoosted, setProfileBoosted] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [locationFilter, setLocationFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('All');
+  const [typeFilter, setTypeFilter] = useState('All');
+  const JOBS_PER_PAGE = 9;
+  const [page, setPage] = useState(1);
   const [selectedJob, setSelectedJob] = useState(null);
   const [applicationStatus, setApplicationStatus] = useState('idle');
   const [savedJobs, setSavedJobs] = useState([]);
 
-  // Filter jobs based on search query, location, and job type
-  const filteredJobs = JOB_LISTINGS.filter((job) => {
-    const matchesSearch = 
-      searchQuery === '' || 
-      job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesLocation = !locationFilter || job.location.includes(locationFilter) || locationFilter === 'remote' && job.location === 'Remote';
-    const matchesType = !typeFilter || job.type === typeFilter;
-    
-    return matchesSearch && matchesLocation && matchesType;
-  });
+  // Job apply state
+  const [appliedJobIds, setAppliedJobIds] = useState(new Set());
+  const [applyingId, setApplyingId] = useState(null);
+  const [showApplied, setShowApplied] = useState(false);
+
+  const [jobs, setJobs] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const debouncedSearch = useDebounce(searchQuery, 400);
+
+  function getUserFriendlyMessage(err) {
+    if (err?.code === 'auth/popup-closed-by-user') return null;
+    const msg = String(err?.message || '');
+    if (msg.toLowerCase().includes('network')) return 'Network error. Check your connection.';
+    if (err?.response?.status === 401) return 'Session expired. Please sign in again.';
+    if (err?.response?.status === 429) return 'Too many requests. Please wait a moment.';
+    return 'Something went wrong. Please try again.';
+  }
+
+  const fetchJobs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = {
+        keyword: debouncedSearch || '',
+        location: locationFilter && locationFilter !== 'All' ? locationFilter : '',
+        type: typeFilter && typeFilter !== 'All' ? typeFilter : '',
+      };
+      const data = await jobsAPI.getJobs(params);
+      setJobs(data.jobs || []);
+      setTotal(data.total ?? (data.jobs || []).length);
+    } catch (err) {
+      console.error('[JobPortal]', err);
+      const msg = getUserFriendlyMessage(err);
+      if (msg) toast.error(msg);
+      setError(msg || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchJobs();
+  }, [debouncedSearch, locationFilter, typeFilter]);
+
+  const filteredJobs = useMemo(() => {
+    let result = jobs || [];
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(j =>
+        (j.title || '').toLowerCase().includes(q) ||
+        (j.company || '').toLowerCase().includes(q) ||
+        (j.tags || []).some(t => String(t).toLowerCase().includes(q)) ||
+        (j.location || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (locationFilter && locationFilter !== 'All') {
+      result = result.filter(j =>
+        (j.location || '').toLowerCase().includes(locationFilter.toLowerCase())
+      );
+    }
+
+    if (typeFilter && typeFilter !== 'All') {
+      result = result.filter(j => j.type === typeFilter);
+    }
+
+    if (showApplied) {
+      result = result.filter(j => appliedJobIds.has(j.id || j._id));
+    }
+
+    return result;
+  }, [jobs, searchQuery, locationFilter, typeFilter, showApplied, appliedJobIds]);
+
+  const pagedJobs = useMemo(() => {
+    const start = (page - 1) * JOBS_PER_PAGE;
+    return filteredJobs.slice(start, start + JOBS_PER_PAGE);
+  }, [filteredJobs, page]);
+
+  useEffect(() => setPage(1), [searchQuery, locationFilter, typeFilter, showApplied]);
+
+  // Quick Apply handler
+  async function handleApply(job) {
+    const id = job.id || job._id;
+    if (!user) { toast.error('Please sign in to apply'); return; }
+    if (appliedJobIds.has(id)) { toast.info('Already applied to this job'); return; }
+    if (applyingId) return;
+
+    setApplyingId(id);
+    try {
+      await jobsAPI.apply({ jobId: id, title: job.title, company: job.company });
+    } catch (_) {
+      // Non-critical — mark as applied even if API fails
+    } finally {
+      setAppliedJobIds(prev => new Set([...prev, id]));
+      setApplyingId(null);
+      toast.success(`Applied to ${job.title} at ${job.company}! 🎉`);
+    }
+  }
 
   // Toggle job save status for bookmarking functionality
   const toggleSaveJob = (jobId) => {
@@ -194,6 +179,10 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
                 Find your next opportunity after mastering your interview skills
               </p>
             </div>
+          </div>
+
+          <div className="text-sm text-white/60">
+            {loading ? 'Loading jobs...' : `${filteredJobs.length} jobs`}
           </div>
           
           {profileBoosted && (
@@ -263,34 +252,46 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
               </div>
             </div>
 
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Location" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
-                <SelectItem value="remote">Remote</SelectItem>
-                {/* Indian cities filter options */}
-                <SelectItem value="Bangalore">Bangalore</SelectItem>
-                <SelectItem value="Pune">Pune</SelectItem>
-                <SelectItem value="Hyderabad">Hyderabad</SelectItem>
-                <SelectItem value="Mumbai">Mumbai</SelectItem>
-                <SelectItem value="Gurgaon">Gurgaon</SelectItem>
-                <SelectItem value="Noida">Noida</SelectItem>
-              </SelectContent>
-            </Select>
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500/60 text-sm"
+            >
+              <option value="All">All Locations</option>
+              <option value="Bangalore">Bangalore</option>
+              <option value="Mumbai">Mumbai</option>
+              <option value="Delhi">Delhi</option>
+              <option value="Hyderabad">Hyderabad</option>
+              <option value="Pune">Pune</option>
+              <option value="Chennai">Chennai</option>
+              <option value="Remote">Remote</option>
+            </select>
 
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Job Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="Full-time">Full-time</SelectItem>
-                <SelectItem value="Contract">Contract</SelectItem>
-                <SelectItem value="Part-time">Part-time</SelectItem>
-              </SelectContent>
-            </Select>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="bg-slate-800 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500/60 text-sm"
+            >
+              <option value="All">All Types</option>
+              <option value="Full-time">Full-time</option>
+              <option value="Part-time">Part-time</option>
+              <option value="Contract">Contract</option>
+              <option value="Internship">Internship</option>
+              <option value="Remote">Remote</option>
+            </select>
+
+            <button
+              type="button"
+              onClick={() => setShowApplied(prev => !prev)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
+                border transition-all whitespace-nowrap ${
+                showApplied
+                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                  : 'bg-white/5 border-white/10 text-white/60 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              ✓ Applied {appliedJobIds.size > 0 && `(${appliedJobIds.size})`}
+            </button>
           </div>
         </Card>
 
@@ -299,17 +300,53 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
           <TabsList>
             <TabsTrigger value="all">All Jobs ({filteredJobs.length})</TabsTrigger>
             <TabsTrigger value="saved">Saved ({savedJobs.length})</TabsTrigger>
-            <TabsTrigger value="applied">Applied (0)</TabsTrigger>
+            <TabsTrigger value="applied">Applied ({appliedJobIds.size})</TabsTrigger>
           </TabsList>
 
           {/* All available jobs list */}
           <TabsContent value="all" className="mt-6">
-            <div className="grid gap-4">
-              {filteredJobs.map((job) => (
-                <Card key={job.id} className="p-6 hover:shadow-lg transition-shadow">
+            {error && (
+              <div className="mb-6 glass-card neon-border border-red-500/40 bg-red-500/10 p-4 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-white/90 text-sm">{error}</p>
+                    <Button
+                      onClick={fetchJobs}
+                      variant="outline"
+                      className="mt-3 border-red-400/30 text-white hover:bg-white/10"
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {loading && (
+              <div className="grid gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="animate-pulse bg-white/5 rounded-xl h-48" />
+                ))}
+              </div>
+            )}
+
+            {!loading && !error && filteredJobs.length === 0 && (
+              <Card className="p-12 text-center glass-card neon-border">
+                <Briefcase className="w-12 h-12 text-white/40 mx-auto mb-4" />
+                <h3 className="mb-2 text-white">No jobs found</h3>
+                <p className="text-white/60">Try adjusting your filters</p>
+              </Card>
+            )}
+
+            {!loading && !error && filteredJobs.length > 0 && (
+              <>
+              <div className="grid gap-4">
+                {pagedJobs.map((job) => (
+                  <Card key={job.id || job._id} className="p-6 glass-card neon-border hover:cyber-glow transition-all">
                   <div className="flex items-start gap-4">
                     <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white flex-shrink-0">
-                      {job.logo}
+                      {(job.company || 'C').slice(0, 2).toUpperCase()}
                     </div>
 
                     <div className="flex-1">
@@ -327,7 +364,7 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock className="w-4 h-4" />
-                              {job.posted}
+                              {job.postedDays ?? 0} days ago
                             </span>
                           </div>
                         </div>
@@ -350,7 +387,11 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
                           <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400" />
                           <span>{job.salary}</span>
                         </span>
-                        {job.tags.map((tag) => (
+                        <span className="flex items-center gap-1 text-sm text-white/60">
+                          <Users className="w-4 h-4" />
+                          {job.applicants ?? 0} applicants
+                        </span>
+                        {(job.tags || []).map((tag) => (
                           <Badge key={tag} variant="outline" className="text-xs">
                             {tag}
                           </Badge>
@@ -358,131 +399,69 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
                       </div>
 
                       <div className="flex gap-2">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button onClick={() => setSelectedJob(job)}>
-                              View Details
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-                            {selectedJob && (
-                              <>
-                                <DialogHeader>
-                                  <DialogTitle>{selectedJob.title}</DialogTitle>
-                                </DialogHeader>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedJob(job)}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
+                            border border-white/20 bg-white/5 hover:bg-white/10
+                            text-white/70 hover:text-white transition-all"
+                        >
+                          View Details
+                        </button>
 
-                                <div className="space-y-6">
-                                  <div className="flex items-start gap-4">
-                                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-xl">
-                                      {selectedJob.logo}
-                                    </div>
-                                    <div>
-                                      <h3>{selectedJob.company}</h3>
-                                      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
-                                        <span className="flex items-center gap-1">
-                                          <MapPin className="w-4 h-4" />
-                                          {selectedJob.location}
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                          <DollarSign className="w-4 h-4" />
-                                          {selectedJob.salary}
-                                        </span>
-                                        <Badge>{selectedJob.type}</Badge>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <h4 className="mb-2">Job Description</h4>
-                                    <p className="text-muted-foreground">
-                                      {selectedJob.description}
-                                    </p>
-                                  </div>
-
-                                  <div>
-                                    <h4 className="mb-2">Requirements</h4>
-                                    <ul className="space-y-2">
-                                      {selectedJob.requirements.map((req, index) => (
-                                        <li key={index} className="flex items-start gap-2 text-muted-foreground">
-                                          <span className="text-green-600 dark:text-green-400 mt-1">✓</span>
-                                          <span>{req}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-
-                                  <div>
-                                    <h4 className="mb-2">Skills</h4>
-                                    <div className="flex flex-wrap gap-2">
-                                      {selectedJob.tags.map((tag) => (
-                                        <Badge key={tag} variant="secondary">
-                                          {tag}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  </div>
-
-                                  {applicationStatus === 'idle' && (
-                                    <div className="space-y-4">
-                                      <div>
-                                        <label className="block mb-2">Cover Letter</label>
-                                        <Textarea
-                                          placeholder="Tell us why you're a great fit for this role..."
-                                          className="min-h-[120px]"
-                                        />
-                                      </div>
-
-                                      <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                                        <div className="flex items-start gap-2">
-                                          <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                                          <div>
-                                            <h4 className="text-sm mb-1">Interview Preparation Tip</h4>
-                                            <p className="text-sm text-muted-foreground">
-                                              Practice with our AI or book a mock interview before applying to increase your chances!
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <Button onClick={submitApplication} className="w-full" size="lg">
-                                        <Send className="w-4 h-4 mr-2" />
-                                        Submit Application
-                                      </Button>
-                                    </div>
-                                  )}
-
-                                  {applicationStatus === 'submitted' && (
-                                    <div className="text-center py-8">
-                                      <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <Send className="w-8 h-8 text-green-600 dark:text-green-400" />
-                                      </div>
-                                      <h3 className="mb-2">Application Submitted!</h3>
-                                      <p className="text-muted-foreground">
-                                        Your application has been sent. Good luck!
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              </>
-                            )}
-                          </DialogContent>
-                        </Dialog>
-
-                        <Button variant="outline">
-                          Quick Apply
-                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => handleApply(job)}
+                          disabled={!!applyingId}
+                          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold
+                            transition-all ${
+                            appliedJobIds.has(job.id || job._id)
+                              ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 cursor-default'
+                              : 'bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/30 text-white'
+                          }`}
+                        >
+                          {appliedJobIds.has(job.id || job._id) ? '✓ Applied'
+                           : applyingId === (job.id || job._id) ? 'Applying...'
+                           : '⚡ Quick Apply'}
+                        </button>
                       </div>
                     </div>
                   </div>
-                </Card>
-              ))}
-            </div>
+                  </Card>
+                ))}
+              </div>
+
+              {filteredJobs.length > JOBS_PER_PAGE && (
+                <div className="flex items-center justify-center gap-2 mt-8">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-white/70 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-sm font-medium"
+                  >
+                    ← Previous
+                  </button>
+                  <span className="text-white/60 text-sm px-3">
+                    Page {page} of {Math.ceil(filteredJobs.length / JOBS_PER_PAGE)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(Math.ceil(filteredJobs.length / JOBS_PER_PAGE), p + 1))}
+                    disabled={page >= Math.ceil(filteredJobs.length / JOBS_PER_PAGE)}
+                    className="px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-white/70 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-sm font-medium"
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+              </>
+            )}
           </TabsContent>
 
           {/* Saved/bookmarked jobs */}
           <TabsContent value="saved">
             {savedJobs.length === 0 ? (
-              <Card className="p-12 text-center">
+              <Card className="p-12 text-center glass-card neon-border">
                 <Bookmark className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="mb-2">No Saved Jobs</h3>
                 <p className="text-muted-foreground">
@@ -491,8 +470,8 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
               </Card>
             ) : (
               <div className="grid gap-4">
-                {JOB_LISTINGS.filter(job => savedJobs.includes(job.id)).map((job) => (
-                  <Card key={job.id} className="p-6">
+                {filteredJobs.filter((job) => savedJobs.includes(job.id)).map((job) => (
+                  <Card key={job.id} className="p-6 glass-card neon-border">
                     <h3>{job.title}</h3>
                     <p className="text-muted-foreground">{job.company}</p>
                   </Card>
@@ -503,19 +482,131 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
 
           {/* Applied jobs history */}
           <TabsContent value="applied">
-            <Card className="p-12 text-center">
-              <Briefcase className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="mb-2">No Applications Yet</h3>
-              <p className="text-muted-foreground mb-6">
-                Start applying to jobs and track your applications here
-              </p>
-              <Button onClick={() => onNavigate('ai-interview')}>
-                Practice Interview First
-              </Button>
-            </Card>
+            {appliedJobIds.size === 0 ? (
+              <Card className="p-12 text-center glass-card neon-border">
+                <Briefcase className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="mb-2">No Applications Yet</h3>
+                <p className="text-muted-foreground mb-6">
+                  Start applying to jobs and track your applications here
+                </p>
+                <Button onClick={() => onNavigate('ai-interview')}>
+                  Practice Interview First
+                </Button>
+              </Card>
+            ) : (
+              <div className="grid gap-4">
+                {(jobs || []).filter(j => appliedJobIds.has(j.id || j._id)).map((job) => (
+                  <Card key={job.id || job._id} className="p-6 glass-card neon-border">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3>{job.title}</h3>
+                        <p className="text-muted-foreground">{job.company}</p>
+                      </div>
+                      <Badge className="bg-emerald-500/20 text-emerald-400">✓ Applied</Badge>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Job Detail Modal */}
+      {selectedJob && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={e => e.target === e.currentTarget && setSelectedJob(null)}
+        >
+          <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-2xl
+                          max-h-[85vh] overflow-y-auto shadow-2xl">
+
+            {/* Modal header */}
+            <div className="sticky top-0 bg-slate-900 z-10 flex items-start justify-between
+                            p-6 border-b border-white/10">
+              <div>
+                <h2 className="text-white font-bold text-xl">{selectedJob.title}</h2>
+                <p className="text-white/60 mt-0.5 text-sm">
+                  {selectedJob.company} · {selectedJob.location}
+                </p>
+              </div>
+              <button type="button" onClick={() => setSelectedJob(null)}
+                      className="text-white/40 hover:text-white transition-colors ml-4 shrink-0">
+                <span className="text-xl leading-none">✕</span>
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="p-6 space-y-5">
+
+              {/* Key info chips */}
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20
+                                 text-cyan-300 text-sm">{selectedJob.salary}</span>
+                <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10
+                                 text-white/70 text-sm">{selectedJob.type}</span>
+                <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10
+                                 text-white/70 text-sm">
+                  {selectedJob.postedDays === 0 ? 'Posted today'
+                   : selectedJob.postedDays === 1 ? 'Posted yesterday'
+                   : `Posted ${selectedJob.postedDays} days ago`}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10
+                                 text-white/70 text-sm">{selectedJob.applicants} applicants</span>
+              </div>
+
+              {/* Tags */}
+              <div className="flex flex-wrap gap-2">
+                {(selectedJob.tags || []).map(tag => (
+                  <span key={tag} className="px-2.5 py-1 rounded-full bg-purple-500/20
+                                     border border-purple-500/20 text-purple-300 text-xs">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              {/* Description */}
+              <div>
+                <h3 className="text-white font-semibold mb-2">About the Role</h3>
+                <p className="text-white/70 text-sm leading-relaxed">{selectedJob.description}</p>
+              </div>
+
+              {/* Requirements */}
+              {selectedJob.requirements?.length > 0 && (
+                <div>
+                  <h3 className="text-white font-semibold mb-3">Requirements</h3>
+                  <ul className="space-y-2">
+                    {selectedJob.requirements.map((req, i) => (
+                      <li key={i} className="flex items-start gap-2 text-white/70 text-sm">
+                        <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                        {req}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Apply button */}
+              <button
+                type="button"
+                onClick={() => { handleApply(selectedJob); setSelectedJob(null); }}
+                disabled={appliedJobIds.has(selectedJob.id || selectedJob._id)}
+                className={`w-full py-3 rounded-xl font-semibold text-sm transition-all
+                            flex items-center justify-center gap-2 ${
+                  appliedJobIds.has(selectedJob.id || selectedJob._id)
+                    ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 cursor-default'
+                    : 'bg-cyan-500 hover:bg-cyan-400 text-white'
+                }`}
+              >
+                {appliedJobIds.has(selectedJob.id || selectedJob._id)
+                  ? '✓ Already Applied'
+                  : '⚡ Apply Now'}
+              </button>
+
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,30 +1,84 @@
 // Home page component for MockMate - landing page with features overview and navigation
 // Displays platform introduction, feature cards, stats, and call-to-action sections
 
+import { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { Bot, Briefcase, Zap, Award, TrendingUp, ArrowRight, Users } from 'lucide-react';
+import { Bot, Briefcase, Zap, Award, ArrowRight, Users, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { statsAPI } from '../services/api';
+import { useToast } from './Toast';
 
 export function Home({ onNavigate }) {
   const { user, signInWithGoogle } = useAuth();
+  const { toast } = useToast();
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
+  const [signingInTarget, setSigningInTarget] = useState(null);
+
+  function getUserFriendlyMessage(err) {
+    if (err?.code === 'auth/popup-closed-by-user') return null;
+    const msg = String(err?.message || '');
+    if (msg.toLowerCase().includes('network')) return 'Network error. Check your connection.';
+    if (err?.response?.status === 401) return 'Session expired. Please sign in again.';
+    if (err?.response?.status === 429) return 'Too many requests. Please wait a moment.';
+    return 'Something went wrong. Please try again.';
+  }
+
+  useEffect(() => {
+    let alive = true;
+    setStatsLoading(true);
+    statsAPI
+      .getPlatformStats()
+      .then((data) => {
+        if (!alive) return;
+        setStats(data);
+      })
+      .catch((err) => {
+        console.error('[Home]', err);
+        const msg = getUserFriendlyMessage(err);
+        if (msg) toast.error(msg);
+      })
+      .finally(() => {
+        if (!alive) return;
+        setStatsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Handle button click - if not logged in, show Google auth, otherwise navigate
   const handleButtonClick = async (page) => {
     if (!user) {
       try {
+        setSigningIn(true);
+        setSigningInTarget(page);
         await signInWithGoogle();
+        toast.success('Signed in successfully!');
         // After successful login, navigate to the requested page
         onNavigate(page);
       } catch (error) {
-        console.error('Failed to sign in:', error);
-        // You can add a toast notification here if needed
+        console.error('[Home]', error);
+        const msg = getUserFriendlyMessage(error);
+        if (msg) toast.error(msg);
+      } finally {
+        setSigningIn(false);
+        setSigningInTarget(null);
       }
     } else {
       // User is already logged in, navigate directly
       onNavigate(page);
     }
   };
+
+  const statValue = (value, suffix = '') => {
+    if (statsLoading) return <div className="h-8 w-20 mx-auto bg-white/10 rounded animate-pulse" />;
+    if (value == null) return '—';
+    return `${value.toLocaleString?.() ?? value}${suffix}`;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 relative overflow-hidden">
       {/* Background visual effects for cyberpunk aesthetic */}
@@ -54,18 +108,30 @@ export function Home({ onNavigate }) {
             <Button 
               size="lg" 
               onClick={() => handleButtonClick('ai-interview')}
+              disabled={signingIn}
               className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 cyber-glow border-0 text-white"
             >
-              <Bot className="w-5 h-5 mr-2" />
-              Start AI Practice
+              {signingIn && signingInTarget === 'ai-interview' ? (
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              ) : (
+                <Bot className="w-5 h-5 mr-2" />
+              )}
+              {signingIn && signingInTarget === 'ai-interview' ? 'Signing in...' : 'Start AI Practice'}
             </Button>
             <Button 
               size="lg" 
               onClick={() => handleButtonClick('volunteer-interview')}
+              disabled={signingIn}
               className="glass-card border-cyan-500/50 text-white hover:bg-white/20"
             >
-              <Users className="w-5 h-5 mr-2" />
-              Book Mock Interview
+              {signingIn && signingInTarget === 'volunteer-interview' ? (
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              ) : (
+                <Users className="w-5 h-5 mr-2" />
+              )}
+              {signingIn && signingInTarget === 'volunteer-interview'
+                ? 'Signing in...'
+                : 'Book Mock Interview'}
             </Button>
           </div>
           
@@ -156,22 +222,40 @@ export function Home({ onNavigate }) {
 
         {/* Platform statistics display */}
         <div className="glass-card neon-border rounded-2xl p-8 mb-16">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
             <div className="text-center">
-              <div className="text-3xl mb-2 text-cyan-400">10K+</div>
+              <div className="text-3xl mb-2 text-cyan-400">
+                {statValue(stats?.practiceSessions)}
+              </div>
               <div className="text-sm text-white/60">Practice Sessions</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl mb-2 text-purple-400">5K+</div>
+              <div className="text-3xl mb-2 text-purple-400">
+                {statValue(stats?.mockInterviews)}
+              </div>
               <div className="text-sm text-white/60">Mock Interviews</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl mb-2 text-green-400">2K+</div>
+              <div className="text-3xl mb-2 text-green-400">
+                {statValue(stats?.jobsPosted)}
+              </div>
               <div className="text-sm text-white/60">Jobs Posted</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl mb-2 text-pink-400">85%</div>
+              <div className="text-3xl mb-2 text-pink-400">
+                {statsLoading ? (
+                  <div className="h-8 w-16 mx-auto bg-white/10 rounded animate-pulse" />
+                ) : (
+                  `${stats?.successRate ?? 0}%`
+                )}
+              </div>
               <div className="text-sm text-white/60">Success Rate</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl mb-2 text-cyan-300">
+                {statValue(stats?.activeUsers)}
+              </div>
+              <div className="text-sm text-white/60">Active Users</div>
             </div>
           </div>
         </div>
@@ -236,6 +320,7 @@ export function Home({ onNavigate }) {
           <Button 
             size="lg" 
             onClick={() => handleButtonClick('dashboard')}
+            disabled={signingIn}
             className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 border-0 text-white"
           >
             Get Started Now

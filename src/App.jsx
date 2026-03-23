@@ -1,35 +1,54 @@
-// Main App component for MockMate - manages routing, state, and navigation
-// Handles user coins, interview history, and page navigation throughout the application
+import { useEffect, useState } from 'react';
+import { Home } from './components/Home';
+import { AIInterview } from './components/AIInterview';
+import { VolunteerInterview } from './components/VolunteerInterview';
+import VolunteerLiveInterview from './components/VolunteerLiveInterview';
+import { JobPortal } from './components/JobPortal';
+import { UserDashboard } from './components/UserDashboard';
+import { CoinStore } from './components/CoinStore';
+import { AdminPanel } from './components/AdminPanel';
+import { Navbar } from './components/Navbar';
+import { Footer } from './components/Footer';
+import { useAuth } from './contexts/AuthContext';
+import { userAPI } from './services/api';
 
-import { useState } from "react";
-import { Home } from "./components/Home";
-import { AIInterview } from "./components/AIInterview";
-import { VolunteerInterview } from "./components/VolunteerInterview";
-import { JobPortal } from "./components/JobPortal";
-import { UserDashboard } from "./components/UserDashboard";
-import { CoinStore } from "./components/CoinStore";
-import { useAuth } from "./contexts/AuthContext";
-import {
-  Briefcase,
-  Bot,
-  Users,
-  Home as HomeIcon,
-  User,
-  Store,
-  LogOut,
-} from "lucide-react";
+// Map page keys to URL-friendly paths
+const PAGE_ROUTES = {
+  home: '/',
+  'ai-interview': '/ai-interview',
+  jobs: '/jobs',
+  dashboard: '/dashboard',
+  'volunteer-interview': '/volunteer',
+  'volunteer-meeting': '/volunteer/meeting',
+  'coin-store': '/coins',
+  admin: '/admin',
+};
+
+const ROUTE_TO_PAGE = {
+  '/': 'home',
+  '/ai-interview': 'ai-interview',
+  '/jobs': 'jobs',
+  '/job-portal': 'jobs',
+  '/dashboard': 'dashboard',
+  '/volunteer': 'volunteer-interview',
+  '/volunteer-interview': 'volunteer-interview',
+  '/volunteer/meeting': 'volunteer-meeting',
+  '/coins': 'coin-store',
+  '/coin-store': 'coin-store',
+  '/admin': 'admin',
+};
+
+const VALID_PAGES = Object.keys(PAGE_ROUTES);
+const PROTECTED_PAGES = ['dashboard', 'ai-interview', 'coin-store'];
 
 export default function App() {
-  // Application state management
-  const [currentPage, setCurrentPage] = useState("home");
+  const [currentPage, setCurrentPage] = useState('home');
   const [userCoins, setUserCoins] = useState(150);
-  const [interviewHistory, setInterviewHistory] = useState([]);
-  const { user, logOut } = useAuth();
-
-  // Add completed interview to history
-  const addInterviewToHistory = (interview) => {
-    setInterviewHistory([interview, ...interviewHistory]);
-  };
+  const [userRole, setUserRole] = useState('candidate');
+  const [backendOnline, setBackendOnline] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [authActionLoading, setAuthActionLoading] = useState(false);
+  const { user, signInWithGoogle } = useAuth();
 
   // Award coins to user (e.g., after completing interviews)
   const addCoins = (amount) => {
@@ -41,233 +60,213 @@ export default function App() {
     setUserCoins((prev) => Math.max(0, prev - amount));
   };
 
+  const navigate = (page) => {
+    const target = VALID_PAGES.includes(page) ? page : 'home';
+    setCurrentPage(target);
+    setPageLoading(true);
+    setTimeout(() => setPageLoading(false), 200);
+    const path = PAGE_ROUTES[target] || '/';
+    window.history.pushState({ page: target }, '', path);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // On mount: read current URL and navigate to matching page
+  useEffect(() => {
+    const path = window.location.pathname;
+    const page = ROUTE_TO_PAGE[path];
+    setCurrentPage(page !== undefined ? page : '404');
+  }, []);
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePop = () => {
+      const path = window.location.pathname;
+      const page = ROUTE_TO_PAGE[path];
+      setCurrentPage(page !== undefined ? page : '404');
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
+
+  // Load user coins from backend when authenticated
+  useEffect(() => {
+    if (user) {
+      userAPI
+        .getMe()
+        .then((data) => {
+          setUserCoins(data?.coins ?? 150);
+          setUserRole(data?.role || 'candidate');
+        })
+        .catch(() => {});
+    } else {
+      setUserRole('candidate');
+      setUserCoins(150);
+    }
+  }, [user]);
+
+  // Backend health check on app startup (only when not in mock mode)
+  useEffect(() => {
+    if (import.meta.env.VITE_MOCK_MODE === 'true') return;
+
+    fetch('/api/health')
+      .then((res) => res.json())
+      .then(() => {
+        console.log('✅ Backend connected');
+        setBackendOnline(true);
+      })
+      .catch(() => {
+        console.warn('⚠️ Backend not reachable. Running in demo mode.');
+        setBackendOnline(false);
+      });
+  }, []);
+
+  const renderAuthRequired = (title, subtitle = 'Please sign in to access this page.') => (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900 text-center p-8">
+      <h1 className="text-3xl font-bold text-white mb-2">{title}</h1>
+      <p className="text-white/60 mb-8 max-w-md">
+        {subtitle}
+      </p>
+      <button
+        type="button"
+        onClick={async () => {
+          try {
+            setAuthActionLoading(true);
+            await signInWithGoogle();
+          } catch (_) {
+            navigate('home');
+          } finally {
+            setAuthActionLoading(false);
+          }
+        }}
+        disabled={authActionLoading}
+        className="bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/50 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+      >
+        {authActionLoading ? 'Signing in...' : 'Sign In'}
+      </button>
+    </div>
+  );
+
   // Route to appropriate page component based on current page state
   const renderPage = () => {
+    if (!user && PROTECTED_PAGES.includes(currentPage)) {
+      if (currentPage === 'dashboard') return renderAuthRequired('Dashboard Locked');
+      if (currentPage === 'coin-store') return renderAuthRequired('Coin Store Locked');
+      return renderAuthRequired('AI Interview Locked');
+    }
+    if (currentPage === 'admin' && !user) {
+      return renderAuthRequired('Admin Access', 'Please sign in with an admin account.');
+    }
+    if (currentPage === 'admin' && userRole !== 'admin') {
+      return renderAuthRequired('Access Denied', 'This page is restricted to admin users only.');
+    }
+
     switch (currentPage) {
-      case "home":
-        return <Home onNavigate={setCurrentPage} />;
-      case "ai-interview":
+      case 'home':
+        return <Home onNavigate={navigate} />;
+      case 'ai-interview':
         return (
           <AIInterview
-            onNavigate={setCurrentPage}
-            onComplete={addInterviewToHistory}
             onCoinsEarned={addCoins}
+            onNavigate={navigate}
           />
         );
-      case "volunteer-interview":
+      case 'volunteer-interview':
         return (
           <VolunteerInterview
-            onNavigate={setCurrentPage}
-            onComplete={addInterviewToHistory}
             userCoins={userCoins}
             onSpendCoins={spendCoins}
             onCoinsEarned={addCoins}
+            onNavigate={navigate}
           />
         );
-      case "jobs":
+      case 'volunteer-meeting': {
+        const params = new URLSearchParams(window.location.search);
+        const room = params.get('room') || '';
+        const volunteer = params.get('volunteer') || 'Volunteer';
+
+        return (
+          <div className="px-4 py-6 md:px-6">
+            <VolunteerLiveInterview
+              open
+              volunteerName={volunteer}
+              currentUserName={user?.displayName || user?.email || 'You'}
+              initialRoomId={room}
+              onClose={() => navigate('volunteer-interview')}
+            />
+          </div>
+        );
+      }
+      case 'jobs':
         return (
           <JobPortal
-            onNavigate={setCurrentPage}
+            onNavigate={navigate}
             userCoins={userCoins}
             onSpendCoins={spendCoins}
           />
         );
-      case "dashboard":
+      case 'dashboard':
         return (
           <UserDashboard
-            onNavigate={setCurrentPage}
+            onNavigate={navigate}
             userCoins={userCoins}
-            interviewHistory={interviewHistory}
             onCoinsEarned={addCoins}
           />
         );
-      case "store":
+      case 'coin-store':
         return (
           <CoinStore
-            onNavigate={setCurrentPage}
+            onNavigate={navigate}
             userCoins={userCoins}
             onPurchase={spendCoins}
           />
         );
+      case 'admin':
+        return <AdminPanel onNavigate={navigate} />;
       default:
-        return <Home onNavigate={setCurrentPage} />;
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center
+                          bg-gradient-to-br from-slate-950 to-slate-900 text-center p-8">
+            <div className="text-8xl font-black text-white/10 mb-4">404</div>
+            <h1 className="text-3xl font-bold text-white mb-2">Page Not Found</h1>
+            <p className="text-white/60 mb-8 max-w-md">
+              The page you are looking for does not exist or has been moved.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('home')}
+              className="bg-cyan-500 hover:bg-cyan-400 text-white font-semibold
+                         px-6 py-3 rounded-xl transition-colors"
+            >
+              Go Home
+            </button>
+          </div>
+        );
     }
   };
 
   return (
-    <div className="size-full flex flex-col bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950">
-      {/* Top navigation bar - hidden on home page */}
-      {currentPage !== "home" && (
-        <nav className="glass-card border-b border-cyan-500/20 sticky top-0 z-50 scan-line">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-lg flex items-center justify-center cyber-glow animate-pulse-slow">
-                  <Bot className="w-5 h-5 text-white" />
-                </div>
-                <span className="gradient-text-animate">
-                  MockMate
-                </span>
-              </div>
-
-              <div className="hidden md:flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPage("home")}
-                  className={`px-4 py-2 rounded-lg transition-all relative group ${
-                    currentPage === "home"
-                      ? "bg-gradient-to-r from-cyan-500/20 to-purple-600/20 text-cyan-400 neon-border-cyan"
-                      : "text-white/70 hover:text-cyan-400 hover:bg-white/5"
-                  }`}
-                >
-                  <HomeIcon className="w-4 h-4 inline mr-2" />
-                  Home
-                  {currentPage === "home" && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-500 to-purple-600"></span>
-                  )}
-                </button>
-                <button
-                  onClick={() => setCurrentPage("ai-interview")}
-                  className={`px-4 py-2 rounded-lg transition-all relative ${
-                    currentPage === "ai-interview"
-                      ? "bg-gradient-to-r from-cyan-500/20 to-purple-600/20 text-cyan-400 neon-border-cyan"
-                      : "text-white/70 hover:text-cyan-400 hover:bg-white/5"
-                  }`}
-                >
-                  <Bot className="w-4 h-4 inline mr-2" />
-                  AI Practice
-                  {currentPage === "ai-interview" && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-500 to-purple-600"></span>
-                  )}
-                </button>
-                <button
-                  onClick={() =>
-                    setCurrentPage("volunteer-interview")
-                  }
-                  className={`px-4 py-2 rounded-lg transition-all relative ${
-                    currentPage === "volunteer-interview"
-                      ? "bg-gradient-to-r from-cyan-500/20 to-purple-600/20 text-cyan-400 neon-border-cyan"
-                      : "text-white/70 hover:text-cyan-400 hover:bg-white/5"
-                  }`}
-                >
-                  <Users className="w-4 h-4 inline mr-2" />
-                  Volunteer Mock
-                  {currentPage === "volunteer-interview" && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-500 to-purple-600"></span>
-                  )}
-                </button>
-                <button
-                  onClick={() => setCurrentPage("jobs")}
-                  className={`px-4 py-2 rounded-lg transition-all relative ${
-                    currentPage === "jobs"
-                      ? "bg-gradient-to-r from-cyan-500/20 to-purple-600/20 text-cyan-400 neon-border-cyan"
-                      : "text-white/70 hover:text-cyan-400 hover:bg-white/5"
-                  }`}
-                >
-                  <Briefcase className="w-4 h-4 inline mr-2" />
-                  Jobs
-                  {currentPage === "jobs" && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-500 to-purple-600"></span>
-                  )}
-                </button>
-                <button
-                  onClick={() => setCurrentPage("dashboard")}
-                  className={`px-4 py-2 rounded-lg transition-all relative ${
-                    currentPage === "dashboard"
-                      ? "bg-gradient-to-r from-cyan-500/20 to-purple-600/20 text-cyan-400 neon-border-cyan"
-                      : "text-white/70 hover:text-cyan-400 hover:bg-white/5"
-                  }`}
-                >
-                  <User className="w-4 h-4 inline mr-2" />
-                  Dashboard
-                  {currentPage === "dashboard" && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-500 to-purple-600"></span>
-                  )}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {user && (
-                  <div className="hidden md:flex items-center gap-2 px-3 py-2 glass-card rounded-lg border border-cyan-500/30">
-                    <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-purple-600 rounded-full flex items-center justify-center">
-                      <span className="text-white text-xs font-semibold">
-                        {user.displayName ? user.displayName.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="hidden lg:block">
-                      <p className="text-xs text-white/90 font-medium">
-                        {user.displayName || user.email?.split('@')[0]}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                <button
-                  onClick={() => setCurrentPage("store")}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-full transition-all hover:scale-105 cursor-pointer cyber-glow neon-border"
-                >
-                  <span className="text-white">🪙</span>
-                  <span className="font-semibold text-white">
-                    {userCoins}
-                  </span>
-                  <Store className="w-4 h-4 text-white" />
-                </button>
-                {user && (
-                  <button
-                    onClick={logOut}
-                    className="px-3 py-2 text-white/70 hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-all"
-                    title="Logout"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Mobile-friendly bottom navigation */}
-          <div className="md:hidden border-t border-cyan-500/20">
-            <div className="flex justify-around py-2">
-              <button
-                onClick={() => setCurrentPage("home")}
-                className={`p-2 transition-colors ${currentPage === "home" ? "text-cyan-400" : "text-white/60"}`}
-              >
-                <HomeIcon className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setCurrentPage("ai-interview")}
-                className={`p-2 transition-colors ${currentPage === "ai-interview" ? "text-cyan-400" : "text-white/60"}`}
-              >
-                <Bot className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() =>
-                  setCurrentPage("volunteer-interview")
-                }
-                className={`p-2 transition-colors ${currentPage === "volunteer-interview" ? "text-cyan-400" : "text-white/60"}`}
-              >
-                <Users className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setCurrentPage("jobs")}
-                className={`p-2 transition-colors ${currentPage === "jobs" ? "text-cyan-400" : "text-white/60"}`}
-              >
-                <Briefcase className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setCurrentPage("dashboard")}
-                className={`p-2 transition-colors ${currentPage === "dashboard" ? "text-cyan-400" : "text-white/60"}`}
-              >
-                <User className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </nav>
+    <div className="flex h-screen flex-col overflow-hidden bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950">
+      {!backendOnline && (
+        <div className="fixed inset-x-0 top-16 z-40 border-b border-amber-500/40 bg-amber-500/20 px-4 py-1.5 text-center text-xs text-amber-300">
+          ⚠️ Running in demo mode — backend not connected. Data shown is for demonstration only.
+        </div>
       )}
 
+      <Navbar currentPage={currentPage} onNavigate={navigate} userCoins={userCoins} user={user} userRole={userRole} />
+
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        {renderPage()}
+      <main className={`flex-1 overflow-y-auto pt-16 ${currentPage === 'volunteer-meeting' ? 'pb-6' : 'pb-16'} ${!backendOnline ? 'pt-24' : ''}`}>
+        {pageLoading ? (
+          <div className="flex items-center justify-center min-h-[50vh]">
+            <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent
+                            rounded-full animate-spin" />
+          </div>
+        ) : (
+          renderPage()
+        )}
       </main>
+
+      {currentPage !== 'volunteer-meeting' && <Footer onNavigate={navigate} />}
     </div>
   );
 }
-

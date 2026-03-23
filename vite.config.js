@@ -1,9 +1,41 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react-swc';
-import path from 'path';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react-swc'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+
+  // Development server config
+  server: {
+    port: 3001,
+    open: true,
+
+    // Proxy: any request starting with /api is forwarded to the backend
+    // This fixes the "Network error" when frontend and backend are on different ports
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false,
+        // Log proxy activity during development so you can see requests going through
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            console.log('[Vite Proxy] Error:', err.message)
+          })
+          proxy.on('proxyReq', (_, req) => {
+            console.log('[Vite Proxy] →', req.method, req.url)
+          })
+        },
+      },
+      '/socket.io': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
+    },
+  },
+
   resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
     alias: {
@@ -48,13 +80,9 @@ export default defineConfig({
       '@': path.resolve(process.cwd(), './src'),
     },
   },
+
   build: {
     target: 'esnext',
     outDir: 'build',
   },
-  server: {
-    port: 3000,
-    open: true,
-  },
-});
-
+})
