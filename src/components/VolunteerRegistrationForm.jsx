@@ -6,6 +6,7 @@ import { X, CheckCircle, Loader2, Clock } from 'lucide-react';
 import { volunteerAPI } from '../services/api';
 import { useAuth }       from '../contexts/AuthContext';
 import { useToast }      from './Toast';
+import { getApiErrorMessage } from '../utils/errorMessage';
 
 const EXPERTISE  = ['Technical', 'Behavioral', 'System Design', 'HR', 'Communication', 'Leadership'];
 const DAYS       = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -80,7 +81,7 @@ export default function VolunteerRegistrationForm({ onClose, onSuccess }) {
       toast.success(res?.message || 'Application submitted successfully.');
       if (onSuccess) onSuccess(res);
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.message || 'Submission failed — please try again';
+      const msg = getApiErrorMessage(err, 'Submission failed. Please try again.');
       toast.error(msg);
       setFieldErrs({ _: msg });
     } finally {
@@ -288,3 +289,4 @@ export default function VolunteerRegistrationForm({ onClose, onSuccess }) {
     </div>
   );
 }
+

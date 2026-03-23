@@ -11,6 +11,7 @@ import {
   User,
   Star,
 } from 'lucide-react';
+import { getApiErrorMessage } from '../utils/errorMessage';
 
 /**
  * @param {{
@@ -91,7 +92,7 @@ export default function VolunteerBookingModal({ volunteer, userCoins, onConfirm,
       });
       setConfirmed(true);
     } catch (err) {
-      setError(err?.response?.data?.error || err?.message || 'Booking failed. Please try again.');
+      setError(getApiErrorMessage(err, 'Booking failed. Please try again.'));
     } finally {
       setConfirming(false);
     }

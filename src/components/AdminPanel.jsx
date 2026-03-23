@@ -5,6 +5,7 @@ import { Badge } from './ui/badge';
 import { AlertCircle, CheckCircle2, RefreshCw, Shield } from 'lucide-react';
 import { adminAPI } from '../services/api';
 import { useToast } from './Toast';
+import { getApiErrorMessage } from '../utils/errorMessage';
 
 export function AdminPanel({ onNavigate }) {
   const { toast } = useToast();
@@ -28,7 +29,7 @@ export function AdminPanel({ onNavigate }) {
       setVolunteers(vol?.volunteers || []);
       setUsers(usr?.users || []);
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.message || 'Failed to load admin data';
+      const msg = getApiErrorMessage(err, 'Failed to load admin data');
       setError(msg);
     } finally {
       setLoading(false);
@@ -46,7 +47,7 @@ export function AdminPanel({ onNavigate }) {
       toast.success(isApproved ? 'Volunteer approved' : 'Volunteer moved to pending');
       await load();
     } catch (err) {
-      const msg = err?.response?.data?.error || err?.message || 'Update failed';
+      const msg = getApiErrorMessage(err, 'Update failed');
       toast.error(msg);
     } finally {
       setSavingId(null);
@@ -161,4 +162,3 @@ export function AdminPanel({ onNavigate }) {
     </div>
   );
 }
-

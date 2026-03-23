@@ -10,6 +10,7 @@ import { jobsAPI } from '../services/api';
 import { useDebounce } from '../hooks/useFetch';
 import { useToast } from './Toast';
 import { useAuth } from '../contexts/AuthContext';
+import { toDisplayMessage } from '../utils/errorMessage';
 
 export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
   const { user } = useAuth();
@@ -40,7 +41,12 @@ export function JobPortal({ onNavigate, userCoins, onSpendCoins }) {
 
   function getUserFriendlyMessage(err) {
     if (err?.code === 'auth/popup-closed-by-user') return null;
+    const serverMessage = toDisplayMessage(
+      err?.response?.data?.error ?? err?.response?.data?.message ?? err?.response?.data?.details,
+      '',
+    );
     const msg = String(err?.message || '');
+    if (serverMessage) return serverMessage;
     if (msg.toLowerCase().includes('network')) return 'Network error. Check your connection.';
     if (err?.response?.status === 401) return 'Session expired. Please sign in again.';
     if (err?.response?.status === 429) return 'Too many requests. Please wait a moment.';
