@@ -27,7 +27,7 @@ npm run dev    # Development with nodemon (auto-restart)
 npm start      # Production
 
 ### 6. Test the API
-curl http://localhost:5000/api/health
+curl ${API_URL}/api/health
 # Should return: {"status":"ok","timestamp":"..."}
 
 ## API Routes
