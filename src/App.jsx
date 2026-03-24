@@ -109,7 +109,9 @@ export default function App() {
   useEffect(() => {
     if (import.meta.env.VITE_MOCK_MODE === 'true') return;
 
-    fetch(`${API_URL}/api/health`)
+    const BASE_API_URL = import.meta.env.VITE_API_URL || API_URL;
+
+    fetch(`${BASE_API_URL}/api/health`)
       .then((res) => res.json())
       .then(() => {
         console.log('✅ Backend connected');
