@@ -9,7 +9,7 @@ const app = express();
 
 // Security headers
 app.use(helmet({
-  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  crossOriginOpenerPolicy: false, // Disable COOP entirely to allow Firebase popup auth
 }));
 
 // CORS — allow frontend origins
