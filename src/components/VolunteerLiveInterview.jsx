@@ -20,7 +20,7 @@ const RTC_CONFIG = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
 
-const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || window.location.origin;
+const SIGNALING_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 function ensureReceiveTransceivers(pc, stream) {
   const existingKinds = pc.getTransceivers().map((transceiver) => transceiver.receiver.track?.kind);
