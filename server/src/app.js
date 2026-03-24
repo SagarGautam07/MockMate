@@ -9,19 +9,18 @@ const app = express();
 // Security headers
 app.use(helmet());
 
-// CORS — allow only the frontend origin
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://localhost:3001',
-  'http://127.0.0.1:3001',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-].filter(Boolean);
-
+// CORS — allow frontend origins
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      // Allow requests with no origin (Postman, mobile apps)
+      if (!origin) return callback(null, true);
+      // Allow all Vercel preview and production URLs
+      if (origin.endsWith('.vercel.app')) return callback(null, true);
+      // Allow localhost for local development
+      if (origin.startsWith('http://localhost')) return callback(null, true);
+      if (origin.startsWith('http://127.0.0.1')) return callback(null, true);
+
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,
