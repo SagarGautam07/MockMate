@@ -6,6 +6,9 @@ const { attachSignaling } = require('./src/realtime/signaling');
 
 const PORT = process.env.PORT || 5000;
 
+// Trust proxy - required for Render/Heroku deployments
+app.set("trust proxy", 1);
+
 // Connect to MongoDB then start server
 mongoose
   .connect(process.env.MONGODB_URI)
