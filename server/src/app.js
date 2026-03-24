@@ -6,8 +6,11 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
+
 // Security headers
-app.use(helmet());
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+}));
 
 // CORS — allow frontend origins
 app.use(
